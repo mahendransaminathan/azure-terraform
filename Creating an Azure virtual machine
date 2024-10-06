@@ -1,0 +1,80 @@
+# Specify the required Terraform version
+terraform {
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 2.0"  # Adjust the version based on your needs
+    }
+  }
+  required_version = ">= 1.0.0"  # Specify the minimum version of Terraform
+}
+
+# Configure the Azure provider
+provider "azurerm" {
+  features {}  # At least one features block is required
+}
+
+locals {
+  resource_group = "app-grp"
+  location       = "westeurope"  # Corrected location name
+}
+
+# Create Resource Group
+resource "azurerm_resource_group" "app_grp" {
+  name     = local.resource_group
+  location = local.location
+}
+
+# Create Virtual Network
+resource "azurerm_virtual_network" "app_network" {
+  name                = "app-network"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.app_grp.name
+  address_space       = ["10.0.0.0/16"]
+}
+
+# Create Subnet
+resource "azurerm_subnet" "SubnetA" {
+  name                 = "SubnetA"
+  resource_group_name  = azurerm_resource_group.app_grp.name
+  virtual_network_name = azurerm_virtual_network.app_network.name
+  address_prefixes     = ["10.0.1.0/24"]
+}
+
+# Create Network Interface
+resource "azurerm_network_interface" "app_interface" {
+  name                = "app-interface"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.app_grp.name
+
+  ip_configuration {
+    name                          = "internal"
+    subnet_id                     = azurerm_subnet.SubnetA.id  # Reference to the created subnet
+    private_ip_address_allocation = "Dynamic"
+  }
+}
+
+# Create Windows Virtual Machine
+resource "azurerm_windows_virtual_machine" "app_vm" {
+  name                = "appvm"
+  resource_group_name = azurerm_resource_group.app_grp.name
+  location            = local.location
+  size                = "Standard_D2s_v3"
+  admin_username      = "demousr"
+  admin_password      = "Azure@123"
+  network_interface_ids = [
+    azurerm_network_interface.app_interface.id,
+  ]
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
+  }
+
+  source_image_reference {
+    publisher = "MicrosoftWindowsServer"
+    offer     = "WindowsServer"
+    sku       = "2019-Datacenter"
+    version   = "latest"
+  }
+}
